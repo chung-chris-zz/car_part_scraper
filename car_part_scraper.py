@@ -1,4 +1,3 @@
-#%%
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.support.ui import Select
@@ -7,7 +6,7 @@ import numpy as np
 import pandas as pd
 import time
 from datetime import datetime
-#%%
+
 
 def select_initial_options(year, make_model, part, zip_code):
     """ After initial load, select year, make & model, part, zip code
@@ -34,11 +33,10 @@ def select_trim(trim):
     radio_labels = driver.find_elements_by_tag_name('label')
 
     # find radio button matching trim
-    count = 0
-    for label in radio_labels:
+    for i, label in enumerate(radio_labels):
         if label.text == trim:
+            count = i
             break
-        count += 1
     
     # click radio button, click Search button
     radio_buttons[count].click()
@@ -70,19 +68,26 @@ def find_pages(html_source):
     tag_num = len(results) - 3
     tbl = results[tag_num]
     
-    # get all child td tags which contain page text
+    # get all child td tags which contain td
     page_tags = tbl.findAll('td')
-    last_page = len(page_tags)
+    # if text without whitespace is all digits, then the results > 1 page
+    text_pages = tbl.text
+    text_pages = ''.join(text_pages.split())
+    if text_pages.isdigit():
+        last_page = len(page_tags)
 
-    # generate list of urls
-    page_urls = []
-    for p in page_tags:
-        try:
-            url = p.find('a')['href']
-            page_urls.append(url)
-        except:
-            pass
-    page_urls = ['https://www.car-part.com' + url for url in page_urls]
+        # generate list of urls
+        page_urls = []
+        for p in page_tags:
+            try:
+                url = p.find('a')['href']
+                page_urls.append(url)
+            except:
+                pass
+        page_urls = ['https://www.car-part.com' + url for url in page_urls]
+    else:
+        last_page = 2
+        page_urls = []
 
     return last_page, page_urls
 
@@ -115,100 +120,14 @@ def scrape_results(html_result):
     for i in np.arange(0,last):
         html_ind = html_result[i]
         tags = html_ind.findAll('td')
-        
-        #  year, part, make/model
-        pmm_list = []
-        for br in tags[0].findAll('br'):
-            next_s = br.nextSibling
-            text = str(next_s).strip()
-            pmm_list.append(text)
-        try:
-            year = tags[0].text[:4]
-        except:
-            year = ''
-        try:
-            part = pmm_list[0]
-        except:
-            part = ''
-        try:
-            mm = pmm_list[1]
-        except:
-            mm = ''
 
-        # image url, description
-        img_tag = tags[1].findChild('img')
-        try:
-            img_url = img_tag['src']
-        except:
-            img_url = ''
-        try:
-            desc = tags[1].text
-        except:
-            desc = ''
-
-        # part grade, stock no, price
-        try:
-            p_grade = tags[2].text
-        except:
-            p_grade = ''
-        try:
-            stock_no = tags[3].text
-        except:
-            stock_no = ''
-        try:
-            price = tags[4].text
-        except:
-            price = ''
-
-        # dealer
-        a_tags = tags[5].findAll('a')
-        try:
-            dealer_url = a_tags[0]['href']
-        except:
-            dealer_url = ''
-        try:
-            dealer_name = a_tags[0].text
-        except:
-            dealer_name = ''
-        
-        # location
-        all_text = tags[5].text
-        pos1 = len(dealer_name)
-        pos2 = all_text[pos1+1:].find(' ')
-        pos2 = pos1 + pos2
-        loc = all_text[pos1+1:pos2]
-
-        # phone, request quote, request ins quote, email
-        try:
-            if 'Request_Quote' and 'Request_Insurance_Quote' in all_text:
-                req_quote_url = a_tags[1]['href']
-                req_ins_quote_url = a_tags[2]['href']
-                pos1 = all_text.find('Request_Quote')
-                pos2 = all_text.find('Request_Insurance_Quote')
-                phone = all_text[pos1+14:pos2-1].strip()
-                email = ''
-            elif 'Request_Quote' in all_text and 'Request_Insurance_Qyote' not in all_text:
-                req_quote_url = a_tags[1]['href']
-                req_ins_quote_url = ''
-                pos1 = all_text.find('Request_Quote')
-                phone = all_text[pos1+14:].strip()
-                email = ''
-            elif 'E-mail' in all_text:
-                email = a_tags[1]['href']
-                req_quote_url = ''
-                req_ins_quote_url = ''
-                phone = ''
-        except:
-            req_quote_url = ''
-            req_ins_quote_url = ''
-            phone = ''
-            email = ''
-        
-        # distance
-        try:
-            dist = tags[6].text
-        except:
-            dist = ''
+        # call individual scrape functions
+        year, part, mm = scrape_ypmm(tags)
+        img_url, desc = scrape_desc_img(tags)
+        p_grade, stock_no, price = scrape_gr_st_pr(tags)
+        dealer_url, dealer_name = scrape_dealer(tags)
+        loc, dist = scrape_loc_dist(tags, dealer_name)
+        phone, email, req_quote_url, req_ins_quote_url = scrape_dealer_info(tags)
 
         # create dict from data and add to rows_list
         dict_row = {
@@ -223,6 +142,126 @@ def scrape_results(html_result):
     
     return rows_list
 
+
+# individual scraping functions called in main scrape_results function above
+def scrape_ypmm(tags):
+    #  year, part, make/model
+    pmm_list = []
+    for br in tags[0].findAll('br'):
+        next_s = br.nextSibling
+        text = str(next_s).strip()
+        pmm_list.append(text)
+    try:
+        year = tags[0].text[:4]
+    except:
+        year = ''
+    try:
+        part = pmm_list[0]
+    except:
+        part = ''
+    try:
+        mm = pmm_list[1]
+    except:
+        mm = ''
+
+    return year, part, mm
+
+
+def scrape_desc_img(tags):
+    # image url, description
+    img_tag = tags[1].findChild('img')
+    try:
+        img_url = img_tag['src']
+    except:
+        img_url = ''
+    try:
+        desc = tags[1].text
+    except:
+        desc = ''
+    
+    return img_url, desc
+
+
+def scrape_gr_st_pr(tags):
+    # part grade, stock no, price
+    try:
+        p_grade = tags[2].text
+    except:
+        p_grade = ''
+    try:
+        stock_no = tags[3].text
+    except:
+        stock_no = ''
+    try:
+        price = tags[4].text
+    except:
+        price = ''
+    
+    return p_grade, stock_no, price
+
+
+def scrape_dealer(tags):
+    # dealer
+    a_tags = tags[5].findAll('a')
+    try:
+        dealer_url = a_tags[0]['href']
+    except:
+        dealer_url = ''
+    try:
+        dealer_name = a_tags[0].text
+    except:
+        dealer_name = ''
+    
+    return dealer_url, dealer_name
+
+
+def scrape_loc_dist(tags, dealer_name):
+    # location
+    all_text = tags[5].text
+    pos1 = len(dealer_name)
+    pos2 = all_text[pos1+1:].find(' ')
+    pos2 = pos1 + pos2
+    loc = all_text[pos1+1:pos2]
+
+    # distance
+    try:
+        dist = tags[6].text
+    except:
+        dist = ''
+
+    return loc, dist
+
+
+def scrape_dealer_info(tags):
+    # phone, request quote, request ins quote, email
+    try:
+        if 'Request_Quote' and 'Request_Insurance_Quote' in all_text:
+            req_quote_url = a_tags[1]['href']
+            req_ins_quote_url = a_tags[2]['href']
+            pos1 = all_text.find('Request_Quote')
+            pos2 = all_text.find('Request_Insurance_Quote')
+            phone = all_text[pos1+14:pos2-1].strip()
+            email = ''
+        elif 'Request_Quote' in all_text and 'Request_Insurance_Qyote' not in all_text:
+            req_quote_url = a_tags[1]['href']
+            req_ins_quote_url = ''
+            pos1 = all_text.find('Request_Quote')
+            phone = all_text[pos1+14:].strip()
+            email = ''
+        elif 'E-mail' in all_text:
+            email = a_tags[1]['href']
+            req_quote_url = ''
+            req_ins_quote_url = ''
+            phone = ''
+    except:
+        req_quote_url = ''
+        req_ins_quote_url = ''
+        phone = ''
+        email = ''
+    
+    return phone, email, req_quote_url, req_ins_quote_url
+# end individual scrape functions
+
 def df_to_excel(rows_list, year, make_model):
     df = pd.DataFrame(rows_list)
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -230,44 +269,49 @@ def df_to_excel(rows_list, year, make_model):
     df.to_excel(f, index=False)
 
 
-# car make, model, year, part, location
-year = '2015'
-make_model = 'Honda Accord'
-part = 'A/C Heater Control (see also Radio or TV Screen)'
-zip_code = '90005'
-trim = 'automatic temperature control, heated mirrors, EX'
+def main():
+    # car make, model, year, part, location
+    year = '2015'
+    make_model = 'Honda Accord'
+    part = 'A/C Heater Control (see also Radio or TV Screen)'
+    #part = 'Coolant Pump'
+    zip_code = '90005'
+    trim = 'automatic temperature control, heated mirrors, EX'
+    #trim = 'mechanical, 2.4L'
 
-# open url
-url = 'https://www.car-part.com/'
-d = Path(__file__).resolve().parent
-driver_path = d / 'chromedriver.exe'
-driver = webdriver.Chrome(executable_path=str(driver_path))
-driver.get(url)
+    # open url
+    url = 'https://www.car-part.com/'
+    d = Path(__file__).resolve().parent
+    driver_path = d / 'chromedriver.exe'
+    driver = webdriver.Chrome(executable_path=str(driver_path))
+    driver.get(url)
 
-# navigate to first results page
-time.sleep(1)
-select_initial_options(year, make_model, part, zip_code)
-time.sleep(1)
-select_trim(trim)
-
-# find number of pages
-time.sleep(1)
-html_source = parse_html()
-last_page, page_urls = find_pages(html_source)
-
-# iterate through pages and scrape
-rows_list = []
-pg_count = 0
-for p in np.arange(1, last_page):
-    if p > 1:
-        url = page_urls[pg_count]
-        driver.get(url)
-        pg_count += 1
-    # get html, scrape, save results to rows_list
-    time.sleep(2)
-    html_result = results_html()
+    # navigate to first results page
     time.sleep(1)
-    rows_list.extend(scrape_results(html_result))
+    select_initial_options(year, make_model, part, zip_code)
+    time.sleep(1)
+    select_trim(trim)
 
-# make df and export to excel
-df_to_excel(rows_list, year, make_model)
+    # find number of pages
+    time.sleep(1)
+    html_source = parse_html()
+    last_page, page_urls = find_pages(html_source)
+
+    # iterate through pages and scrape
+    rows_list = []
+    for p in np.arange(1, last_page):
+        if p > 1:
+            url = page_urls[p - 1]
+            driver.get(url)
+        # get html, scrape, save results to rows_list
+        time.sleep(2)
+        html_result = results_html()
+        time.sleep(1)
+        rows_list.extend(scrape_results(html_result))
+
+    # make df and export to excel
+    df_to_excel(rows_list, year, make_model)
+
+
+if __name__ == "__main__":
+    main()
