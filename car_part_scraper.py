@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 
 
-def select_initial_options(year, make_model, part, zip_code):
+def select_initial_options(driver, year, make_model, part, zip_code):
     """ After initial load, select year, make & model, part, zip code
     """
     # select options
@@ -24,7 +24,7 @@ def select_initial_options(year, make_model, part, zip_code):
     driver.find_element_by_name('Search Car Part Inventory').click()
 
 
-def select_trim(trim):
+def select_trim(driver, trim):
     """ After first Search button, select a trim
     """
 
@@ -43,7 +43,7 @@ def select_trim(trim):
     driver.find_element_by_name('Search Car Part Inventory').click()
 
 
-def parse_html():
+def parse_html(driver):
     """ Parse current page html using BeautifulSoup
     """
     page_html = driver.page_source
@@ -92,11 +92,11 @@ def find_pages(html_source):
     return last_page, page_urls
 
 
-def results_html():
+def results_html(driver):
     """ Isolate html to tr tags containing individual listing info
     """
     # get html of current page
-    html_source = parse_html()
+    html_source = parse_html(driver)
 
     # table of pages contained in 5th table tag
     results = html_source.findAll('tbody')
@@ -288,13 +288,13 @@ def main():
 
     # navigate to first results page
     time.sleep(1)
-    select_initial_options(year, make_model, part, zip_code)
+    select_initial_options(driver, year, make_model, part, zip_code)
     time.sleep(1)
-    select_trim(trim)
+    select_trim(driver, trim)
 
     # find number of pages
     time.sleep(1)
-    html_source = parse_html()
+    html_source = parse_html(driver)
     last_page, page_urls = find_pages(html_source)
 
     # iterate through pages and scrape
@@ -305,7 +305,7 @@ def main():
             driver.get(url)
         # get html, scrape, save results to rows_list
         time.sleep(2)
-        html_result = results_html()
+        html_result = results_html(driver)
         time.sleep(1)
         rows_list.extend(scrape_results(html_result))
 
