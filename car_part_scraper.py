@@ -6,6 +6,11 @@ import numpy as np
 import pandas as pd
 import time
 from datetime import datetime
+import importlib
+import logging
+
+
+logger = logging.basicConfig(filename='log.txt',level=logging.INFO)
 
 
 def select_initial_options(driver, year, make_model, part, zip_code):
@@ -22,6 +27,7 @@ def select_initial_options(driver, year, make_model, part, zip_code):
 
     # click Search
     driver.find_element_by_name('Search Car Part Inventory').click()
+    logging.info('Initial options selected')
 
 
 def select_trim(driver, trim):
@@ -41,6 +47,7 @@ def select_trim(driver, trim):
     # click radio button, click Search button
     radio_buttons[count].click()
     driver.find_element_by_name('Search Car Part Inventory').click()
+    logging.info('Found trim and selected')
 
 
 def parse_html(driver):
@@ -48,6 +55,7 @@ def parse_html(driver):
     """
     page_html = driver.page_source
     html_source = BeautifulSoup(page_html, "html.parser")
+
     return html_source
 
 
@@ -89,6 +97,7 @@ def find_pages(html_source):
         last_page = 2
         page_urls = []
 
+    logging.info('Pages found')
     return last_page, page_urls
 
 
@@ -135,7 +144,8 @@ def scrape_results(html_result):
             'description':desc, 'part_grade':p_grade, 'stock_no':stock_no,
             'price':price, 'dealer_name':dealer_name, 'dealer_url':dealer_url,
             'location':loc, 'req_quote_url': req_quote_url,
-            'req_ins_quote_url':req_ins_quote_url, 'phone':phone, 'email':email
+            'req_ins_quote_url':req_ins_quote_url, 'phone':phone, 'email':email,
+            'distance':dist
         }
 
         rows_list.append(dict_row)
@@ -234,6 +244,8 @@ def scrape_loc_dist(tags, dealer_name):
 
 def scrape_dealer_info(tags):
     # phone, request quote, request ins quote, email
+    all_text = tags[5].text
+    a_tags = tags[5].findAll('a')
     try:
         if 'Request_Quote' and 'Request_Insurance_Quote' in all_text:
             req_quote_url = a_tags[1]['href']
@@ -270,14 +282,12 @@ def df_to_excel(rows_list, year, make_model):
 
 
 def main():
-    # car make, model, year, part, location
-    year = '2015'
-    make_model = 'Honda Accord'
-    part = 'A/C Heater Control (see also Radio or TV Screen)'
-    #part = 'Coolant Pump'
-    zip_code = '90005'
-    trim = 'automatic temperature control, heated mirrors, EX'
-    #trim = 'mechanical, 2.4L'
+    # retrieve make, model, year, part, location from plugin
+    plugin_name = 'plugins.2016_toyota_camry_console'
+    plugin_module = importlib.import_module(plugin_name)
+    plugin = plugin_module.Plugin()
+    year, make_model, part, zip_code, trim = plugin.return_vars()
+    
 
     # open url
     url = 'https://www.car-part.com/'
@@ -298,6 +308,7 @@ def main():
     last_page, page_urls = find_pages(html_source)
 
     # iterate through pages and scrape
+    logging.info('Beginning scrape of pages')
     rows_list = []
     for p in np.arange(1, last_page):
         if p > 1:
@@ -309,8 +320,11 @@ def main():
         time.sleep(1)
         rows_list.extend(scrape_results(html_result))
 
+    logging.info('Successfully scraped all pages')
+    
     # make df and export to excel
     df_to_excel(rows_list, year, make_model)
+    logging.info('Process is complete. Output created.')
 
 
 if __name__ == "__main__":
