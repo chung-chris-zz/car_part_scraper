@@ -1,7 +1,7 @@
 # www.car-part.com scraper
 
 # Introduction
-This is a project to scrape pricing info for products available for sale on car-parts.com for user-defined year-make_model-part-location combinations. The end result is an Excel file containing the data in an organized format for viewing and further analysis.
+This is a project to scrape pricing info for products available for sale on car-part.com for user-defined year-make_model-part-location combinations. The end result is an Excel file containing the data in an organized format for viewing and further analysis.
 
 - Scraping the website does not appear to violate TOS or robots.txt.
 
