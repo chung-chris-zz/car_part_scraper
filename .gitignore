@@ -1,4 +1,4 @@
-html_source.txt
-html.txt
+html*.txt
 *.xlsx
 chromedriver.exe
+log.txt
